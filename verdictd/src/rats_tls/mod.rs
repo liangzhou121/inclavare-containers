@@ -8,6 +8,7 @@ use foreign_types::{ForeignType, ForeignTypeRef, Opaque};
 use std::ops::{Deref, DerefMut};
 use std::os::unix::io::RawFd;
 use std::ptr::NonNull;
+use eventlog_rs;
 
 mod ffi;
 use ffi::*;
@@ -186,14 +187,33 @@ impl RatsTls {
             })
     }
 
+    fn tdx_callback(ev: rtls_tdx_evidence_t) -> Result<(), String> {
+        let mut event = Vec::new();
+        let tdel_info = unsafe { std::slice::from_raw_parts(ev.tdel_info, ev.tdel_info_sz as usize).to_vec() };
+        let tdel_data = unsafe { std::slice::from_raw_parts(ev.tdel_data, ev.tdel_data_sz as usize).to_vec() };
+        event.push(tdel_info);
+        event.push(tdel_data);
+        let rtmr = eventlog_rs::fetch_hashes(event, eventlog_rs::TEE_TDX);
+        let rtmr0 = unsafe { std::slice::from_raw_parts(ev.rtmr[0], 48).to_vec() };
+        let rtmr1 = unsafe { std::slice::from_raw_parts(ev.rtmr[1], 48).to_vec() };
+        let rtmr2 = unsafe { std::slice::from_raw_parts(ev.rtmr[2], 48).to_vec() };
+        let rtmr3 = unsafe { std::slice::from_raw_parts(ev.rtmr[3], 48).to_vec() };
+        if rtmr[0] != rtmr0  || rtmr[1] != rtmr1 || rtmr[2] != rtmr2 || rtmr[3] != rtmr3 {
+            return Err(format!("rtmr error: rtmr0 {:?}, {:?} rtmr1 {:?}, {:?} rtmr2 {:?}, {:?} rtmr3 {:?}, {:?}", 
+                rtmr0, rtmr[0], rtmr1, rtmr[1], rtmr2, rtmr[2], rtmr3, rtmr[3]));
+        }
+
+        Ok(())
+    }
+
     #[no_mangle]
     extern "C" fn callback(evidence: *mut ::std::os::raw::c_void) -> ::std::os::raw::c_int {
         info!("Verdictd Rats-TLS callback function is called.");
         let evidence = evidence as *mut rtls_evidence;
-        let res = if unsafe { (*evidence).type_ } == enclave_evidence_type_t_SGX_ECDSA {
-            Self::sgx_callback(unsafe { (*evidence).__bindgen_anon_1.sgx })
-        } else {
-            Err("Not implemented".to_string())
+        let res = match unsafe{ (*evidence).type_ }  {
+            enclave_evidence_type_t_SGX_ECDSA => Self::sgx_callback(unsafe { (*evidence).__bindgen_anon_1.sgx }),
+            enclave_evidence_type_t_TDX => Self::tdx_callback(unsafe { (*evidence).__bindgen_anon_1.tdx }),
+            _ => Err("Not implemented".to_string()),
         };
 
         let allow = match res {

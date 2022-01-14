@@ -605,7 +605,18 @@ fn bindgen_test_layout_rtls_sgx_evidence() {
 pub type rtls_sgx_evidence_t = rtls_sgx_evidence;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct rtls_tdx_evidence {}
+pub struct rtls_tdx_evidence {
+    pub mrseam: *mut u8,
+    pub mrseamsigner: *mut u8,
+    pub tcb_svns: *mut u8,
+    pub cpu_svn: *mut u8,
+    pub mrtd: *mut u8,
+    pub rtmr: [*mut u8; 4usize],
+    pub tdel_info: *mut u8,
+    pub tdel_info_sz: u32,
+    pub tdel_data: *mut u8,
+    pub tdel_data_sz: u32,
+}
 #[test]
 fn bindgen_test_layout_rtls_tdx_evidence() {
     assert_eq!(
